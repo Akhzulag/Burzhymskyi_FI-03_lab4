@@ -81,14 +81,25 @@ void matrix()
 
 int main()
 {
-
+    //0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
     while(true)
     {
         std::string a;
         std::cin>>a;
-        GF2 b(a);
-        //std::cout<<(b*b).convert64bitToHex()<<' ';
+       // std::cout<<log2(0);
+        GF2 b(a),c(a);
+        //b.oneBitShiftLeft();
+        //std::cout<<b.convert64bitToHex();
+        std::cout<<(b*c).convert64bitToHex()<<'\n';
         b.power2();
+//        for(int i = 0; i<179; ++i)
+//        {
+//            b.oneBitShiftLeft();
+//            //b.power2();
+//            std::cout<<std::dec<<i<<' ';
+//            std::cout<<std::hex<<b.elementGF[0]<<' '<<std::hex<<b.elementGF[1]<<' '<<std::hex<<b.elementGF[2]<<'\n';
+//        }
+//
         std::cout<<b.convert64bitToHex();
     }
 

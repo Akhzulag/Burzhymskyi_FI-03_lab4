@@ -63,12 +63,12 @@ void GF2::convertHexTo64Bit()
 
 }
 
-std::string GF2::convert64bitToHex()
+std::string GF2::convert64bitToHex() const
 {
     char numHex[16] = {'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'};
 
     std::ostringstream stream ;
-    for(int i = 3 - size; i < 3 ; ++i)//треба перевірити чи нормально переводить бо я не докінця в певнений чи нормально буде при зміні порядку запису
+    for(int i = 0; i < 3 ; ++i)
         stream << std::hex << elementGF[i];
 
     hex = stream.str();
@@ -79,27 +79,18 @@ std::string GF2::convert64bitToHex()
 
 GF2& GF2::operator += (const GF2 &right)
 {
-    this->size = std::max(right.size, this->size);
-
-    for(int i = 0; i < this->size - 1; ++i)
+    for(int i = 0; i < 2; ++i)
     {
         this->elementGF[i] = this->elementGF[i] ^ right.elementGF[i];
     }
 
-    for(int i = 3 - this->size; i < 3; ++i)
-    {
-        if(this->elementGF[i] == 0)
-            --this->size;
-        else
-            break;
-    }
 
     return *this;
 }
 
 u64 GF2::Trace()//needed check;
 {
-    int size = 3 - this->size;
+    int size = 2;
     u64 mask = 1;
     u64 el = this->elementGF[size];
     u64 trace = 0;
@@ -107,7 +98,7 @@ u64 GF2::Trace()//needed check;
     {
         trace = trace ^ (el & mask);
 
-        el >>=1;
+        el >>= 1;
         if(el == 0)
         {
             --size;
@@ -119,44 +110,40 @@ u64 GF2::Trace()//needed check;
 
 void GF2::power2() //needed test
 {
-    u64 carry = 0;
-    for(int i = 3 - this->size; i < 3; ++i)
-    {
-        u64 tmp = this->elementGF[i];
-        this->elementGF[i] = (tmp >> 1) | carry;
-        carry = (tmp & 1)<<63;
-    }
-
-    this->elementGF[0] |= carry;
-    for(int i = 0; i < 3; ++i)
-    {
-        if(this->elementGF[i] != 0)
-            this->size = 3 - i;
-        else
-            break;
-    }
+   u64 carry = 0;
+   for(int i = 0; i < 3; ++i)
+   {
+       u64 tmp = this->elementGF[i];
+       this->elementGF[i] = (tmp >> 1) | (carry << 63);
+       carry = (tmp & 1);
+   }
+   this->elementGF[0] |= carry << 50;
 
 }
 
 void GF2::oneBitShiftLeft() const
 {
     u64 carry = 0;
-    for(int i = this->size - 1; i >= 0; --i)
+    for(int i = 2; i >= 1; --i)
     {
         u64 tmp = this->elementGF[i];
         this->elementGF[i] = (tmp << 1) | carry;
         carry = (tmp >> 63) & 1;
     }
+    u64 tmp = this->elementGF[0];
 
-    this->elementGF[this->size - 1] |= carry;
-
-    for(int i = 0; i < 3; ++i)
+    if(tmp >> 50 == 1)
     {
-        if(this->elementGF[i] != 0)
-            this->size = 3 - i;
-        else
-            break;
+        this->elementGF[0] = (((tmp << 1) ^ ((u64)1 << 51))) | carry;
+        carry = (tmp >> 50) & 1;
+    }else
+    {
+        this->elementGF[0] = (tmp << 1) | carry;
+        carry = 0;
     }
+
+    this->elementGF[2] |= carry;
+
 }
 
 u64 xorBites(u64 el)
@@ -170,50 +157,58 @@ u64 xorBites(u64 el)
     return a;
 }
 
+GF2::GF2(const u64* a)
+{
+    for(int i = 0; i < 3; ++i)
+    {
+        this->elementGF[i] = a[i];
+    }
+}
+
+
+
 GF2& operator * (const GF2& right, const GF2& left)
 {
     //i must copy right and left and then shift copy of them
-    u64 result[3] = {0,0,0};
-    for(int j = 0; j < 179; ++j)
-    {
-        u64 resultJ[3] = {0,0,0};
-        //multiply element with matrix
-        for(int k = 0; k < 179; ++k)
-        {
-            u64 tmpk = (right.elementGF[Field::mulMatrix[0]] << Field::mulMatrix[1]) & (u64)1 ;
-            for(int i = 1; i < 179; ++i)
-            {
-                if(i < 51)//51 because elementGF[0] has max 51 bit
-                {
-                    tmpk ^= ((right.elementGF[Field::mulMatrix[i*4]] >> Field::mulMatrix[i*4 + 1]) & (u64)1)
-                            ^(((right.elementGF[Field::mulMatrix[i*4 + 2]] >> Field::mulMatrix[i*4 + 3]) & (u64)1));
-                }
-                else
-                {
-                    tmpk ^= ((right.elementGF[Field::mulMatrix[i*4]] >> Field::mulMatrix[i*4 + 1]) & (u64)1)
-                            ^(((right.elementGF[Field::mulMatrix[i*4 + 2]] >> Field::mulMatrix[i*4 + 3]) & (u64)1));
-                }
-            }
-            //Sum up all bites
-            if(k<51)
-                resultJ[0] |= tmpk << (50 - k);
-            else
-                resultJ[(k+13)/64] |= tmpk << ((64 - (k - 50)%64 )%64);
-        }
-        //result of multiplying * left element
-        u64 vectorJ = (resultJ[0] & left.elementGF[0])^(resultJ[1] & left.elementGF[1])^(resultJ[2] & left.elementGF[2]);
-        vectorJ = xorBites(vectorJ);
 
+    u64 result[3] = {0,0,0};
+    for(int k = 0; k < 179; ++k)
+    {
+        u64 resultK[3] = {0,0,0};
+        u64 tmpk = (right.elementGF[Field::mulMatrix[0]] >> Field::mulMatrix[1]) & (u64)1 ;
+        std::cout<<((right.elementGF[Field::mulMatrix[0]] >> Field::mulMatrix[1]) & (u64)1);
+        resultK[0] |= tmpk << 50;
+
+        for(int i = 1; i < 179; ++i)
+        {
+
+            tmpk = (u64)(((right.elementGF[Field::mulMatrix[i*4]] >> Field::mulMatrix[i*4 + 1]) & (u64)1)
+                    ^(((right.elementGF[Field::mulMatrix[i*4 + 2]] >> Field::mulMatrix[i*4 + 3]) & (u64)1)));
+
+            std::cout<<tmpk;
+            if(i < 51)
+                resultK[0] |= tmpk << (50 - i);
+            else
+                resultK[(i+13)/64] |= tmpk << ((64 - (i - 50)%64 )%64);
+
+
+        }
+        std::cout<<'\n';
+        std::cout<<std::hex<<resultK[0]<<' '<<resultK[1]<<' '<<resultK[2]<<'\n';
+        std::cout<<"elementGF= "<<std::hex<<left.elementGF[0]<<' '<<left.elementGF[1]<<' '<<left.elementGF[2]<<'\n';
+        //result of multiplying * left element
+        u64 vectorJ = (resultK[0] & left.elementGF[0])^(resultK[1] & left.elementGF[1])^(resultK[2] & left.elementGF[2]);
+        vectorJ = xorBites(vectorJ);
+        std::cout<<vectorJ<<'\n';
         //put bit on position in result element
-        if(j<51)
-            result[0] |= vectorJ << (50-j);
+        if(k < 51)
+            result[0] |= vectorJ << (50-k);
         else
-            result[(j+13)/64] |= vectorJ << ((64-(j-50)%64)%64);
+            result[(k+13)/64] |= vectorJ << ((64-(k-50)%64)%64);
 
         right.oneBitShiftLeft();
         left.oneBitShiftLeft();
     }
-    //right.oneBitShiftLeft();
-    //left.oneBitShiftLeft();
 
+    return *new GF2(result);
 }
