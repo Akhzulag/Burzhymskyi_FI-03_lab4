@@ -45,10 +45,13 @@ public:
 
     GF2& power2(const GF2&);
     void power2();
+    void power2k(int k);
+    GF2& power2k(const GF2&, int k);
     u64 Trace();
     void buildMulmatrix(std::pair<int,int >);
-
+    GF2& inverseGF();
     GF2& operator += (const GF2 &);
+
     GF2& operator *= (GF2 &);
 
 };

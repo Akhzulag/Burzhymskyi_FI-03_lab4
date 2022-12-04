@@ -69,7 +69,7 @@ std::string GF2::convert64bitToHex() const
 
     std::ostringstream stream ;
     for(int i = 0; i < 3 ; ++i)
-        stream << std::hex << elementGF[i];
+        stream << std::hex << elementGF[i]<<' ';
 
     hex = stream.str();
 
@@ -169,14 +169,15 @@ GF2::GF2(const u64* a)
 
 GF2& operator * (const GF2& right, const GF2& left)
 {
-    //i must copy right and left and then shift copy of them
+    //TODO i must copy right and left and then shift copy of them
 
     u64 result[3] = {0,0,0};
     for(int k = 0; k < 179; ++k)
     {
+      //  std::cout<<"k: "<<k<<'\n';
         u64 resultK[3] = {0,0,0};
         u64 tmpk = (right.elementGF[Field::mulMatrix[0]] >> Field::mulMatrix[1]) & (u64)1 ;
-        std::cout<<((right.elementGF[Field::mulMatrix[0]] >> Field::mulMatrix[1]) & (u64)1);
+       // std::cout<<((right.elementGF[Field::mulMatrix[0]] >> Field::mulMatrix[1]) & (u64)1);
         resultK[0] |= tmpk << 50;
 
         for(int i = 1; i < 179; ++i)
@@ -185,7 +186,7 @@ GF2& operator * (const GF2& right, const GF2& left)
             tmpk = (u64)(((right.elementGF[Field::mulMatrix[i*4]] >> Field::mulMatrix[i*4 + 1]) & (u64)1)
                     ^(((right.elementGF[Field::mulMatrix[i*4 + 2]] >> Field::mulMatrix[i*4 + 3]) & (u64)1)));
 
-            std::cout<<tmpk;
+          //  std::cout<<tmpk;
             if(i < 51)
                 resultK[0] |= tmpk << (50 - i);
             else
@@ -193,13 +194,13 @@ GF2& operator * (const GF2& right, const GF2& left)
 
 
         }
-        std::cout<<'\n';
-        std::cout<<std::hex<<resultK[0]<<' '<<resultK[1]<<' '<<resultK[2]<<'\n';
-        std::cout<<"elementGF= "<<std::hex<<left.elementGF[0]<<' '<<left.elementGF[1]<<' '<<left.elementGF[2]<<'\n';
+//        std::cout<<'\n';
+//        std::cout<<std::hex<<resultK[0]<<' '<<resultK[1]<<' '<<resultK[2]<<'\n';
+//        std::cout<<"elementGF= "<<std::hex<<left.elementGF[0]<<' '<<left.elementGF[1]<<' '<<left.elementGF[2]<<'\n';
         //result of multiplying * left element
         u64 vectorJ = (resultK[0] & left.elementGF[0])^(resultK[1] & left.elementGF[1])^(resultK[2] & left.elementGF[2]);
         vectorJ = xorBites(vectorJ);
-        std::cout<<vectorJ<<'\n';
+     //   std::cout<<vectorJ<<'\n';
         //put bit on position in result element
         if(k < 51)
             result[0] |= vectorJ << (50-k);
@@ -211,4 +212,60 @@ GF2& operator * (const GF2& right, const GF2& left)
     }
 
     return *new GF2(result);
+}
+
+void GF2::power2k(int k)
+{
+    u64 carry = 0;
+    u64 mask = 0xFFFFFFFFFFFFFFFF;
+    for(int i = 0; i < 3; ++i)
+    {
+        u64 tmp = this->elementGF[i];
+        this->elementGF[i] = (tmp >> k) | (carry << (64 - k));
+        carry = (tmp & (mask >> (64-k)));
+    }
+    this->elementGF[0] |= (carry << (51-k));
+}
+GF2& GF2::power2k(const GF2&, int k)
+{
+    //k %= 179;
+    //std::bitset<179> res =  (std::bitset<179>(this->elementGF[0])<<128) |
+                            (std::bitset<179>(this->elementGF[1])<<64) |
+                            (std::bitset<179>(this->elementGF[2]));
+    //std::bitset<179> res
+    u64 carry = 0;
+    u64 mask = 0xFFFFFFFFFFFFFFFF;
+    u64 res[3] = {0,0,0};
+    for(int i = 0; i < 3; ++i)
+    {
+        res[i] = (this->elementGF[i]>>k) | (carry << (64 - k));
+        carry = (this->elementGF[i] & (mask >> (64-k)));
+    }
+    res[0] |= (carry << (51-k));
+    return *new GF2(res);
+}
+
+GF2& GF2::inverseGF()//need tests
+{
+    GF2 b(this->elementGF);
+    int k = 1;
+    uint8_t m = 178;// (1011 0010)2
+    for(int i = 6; i >= 0; --i)
+    {
+       GF2 tmp(b.elementGF);
+       for(int j = 0;j<k;++j)
+           tmp.power2();
+       b = tmp * b;
+       k *= 2;
+       std::cout<<((m>>i)&1);
+       if(((m>>i) & 1) == 1)
+       {
+           b.power2();
+           b = b * *this;
+           ++k;
+       }
+    }
+    std::cout<<"\n";
+    b.power2();
+    return *new GF2(b.elementGF);
 }
