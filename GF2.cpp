@@ -1,8 +1,6 @@
-//
-// Created by Ростислав Буржимський on 18/11/2022.
-//
-
 #include "GF2.h"
+
+using namespace Field;
 
 GF2::~GF2()
 {
@@ -33,7 +31,7 @@ GF2::GF2(std::string hex)
 }
 
 
-u64 GF2::hexCharToNumber(char& hex)
+u64 GF2::hexCharToNumber(char& hex) const
 {
     switch (hex)
     {
@@ -59,7 +57,8 @@ void GF2::convertHexTo64Bit()
 {
     for(int i = 2; i >= 3-size; --i)
         for(int k = 0; k < 16; ++k)
-            elementGF[i] |= (hexCharToNumber(hex[16 * (2 - i) + k]) << k*4);
+            if(16 * (2 - i) + k < hex.size())
+                elementGF[i] |= (hexCharToNumber(hex[16 * (2 - i) + k]) << k*4);
 
 }
 
@@ -69,26 +68,39 @@ std::string GF2::convert64bitToHex() const
 
     std::ostringstream stream ;
     for(int i = 0; i < 3 ; ++i)
-        stream << std::hex << elementGF[i]<<' ';
+        for(int k = 15; k >=0; --k)
+            stream << numHex[(elementGF[i] >> k*4) & 15];
 
-    hex = stream.str();
+    std::string tmpHex = stream.str();
+
+    //std::reverse(tmpHex.begin(), tmpHex.end());
+    hex = '0';
+    for(int i=0; i<tmpHex.size(); ++i)
+    {
+        if(tmpHex[i] != '0')
+        {
+            hex = tmpHex.substr(i);
+            break;
+        }
+    }
 
     std::transform(this->hex.begin(), this->hex.end(), this->hex.begin(), ::tolower);
     return hex;
 }
 
+
+
 GF2& GF2::operator += (const GF2 &right)
 {
-    for(int i = 0; i < 2; ++i)
+    for(int i = 0; i < 3; ++i)
     {
         this->elementGF[i] = this->elementGF[i] ^ right.elementGF[i];
     }
 
-
     return *this;
 }
 
-u64 GF2::Trace()//needed check;
+u64 GF2::Trace()
 {
     int size = 2;
     u64 mask = 1;
@@ -108,7 +120,7 @@ u64 GF2::Trace()//needed check;
     return trace;
 }
 
-void GF2::power2() //needed test
+void GF2::power2()
 {
    u64 carry = 0;
    for(int i = 0; i < 3; ++i)
@@ -166,18 +178,17 @@ GF2::GF2(const u64* a)
 }
 
 
-
-GF2& operator * (const GF2& right, const GF2& left)
+GF2& operator * (const GF2& r, const GF2& l)
 {
-    //TODO i must copy right and left and then shift copy of them
 
+    GF2 right(r.elementGF);
+    GF2 left(l.elementGF);
     u64 result[3] = {0,0,0};
     for(int k = 0; k < 179; ++k)
     {
-      //  std::cout<<"k: "<<k<<'\n';
+
         u64 resultK[3] = {0,0,0};
         u64 tmpk = (right.elementGF[Field::mulMatrix[0]] >> Field::mulMatrix[1]) & (u64)1 ;
-       // std::cout<<((right.elementGF[Field::mulMatrix[0]] >> Field::mulMatrix[1]) & (u64)1);
         resultK[0] |= tmpk << 50;
 
         for(int i = 1; i < 179; ++i)
@@ -186,7 +197,6 @@ GF2& operator * (const GF2& right, const GF2& left)
             tmpk = (u64)(((right.elementGF[Field::mulMatrix[i*4]] >> Field::mulMatrix[i*4 + 1]) & (u64)1)
                     ^(((right.elementGF[Field::mulMatrix[i*4 + 2]] >> Field::mulMatrix[i*4 + 3]) & (u64)1)));
 
-          //  std::cout<<tmpk;
             if(i < 51)
                 resultK[0] |= tmpk << (50 - i);
             else
@@ -194,14 +204,9 @@ GF2& operator * (const GF2& right, const GF2& left)
 
 
         }
-//        std::cout<<'\n';
-//        std::cout<<std::hex<<resultK[0]<<' '<<resultK[1]<<' '<<resultK[2]<<'\n';
-//        std::cout<<"elementGF= "<<std::hex<<left.elementGF[0]<<' '<<left.elementGF[1]<<' '<<left.elementGF[2]<<'\n';
-        //result of multiplying * left element
         u64 vectorJ = (resultK[0] & left.elementGF[0])^(resultK[1] & left.elementGF[1])^(resultK[2] & left.elementGF[2]);
         vectorJ = xorBites(vectorJ);
-     //   std::cout<<vectorJ<<'\n';
-        //put bit on position in result element
+
         if(k < 51)
             result[0] |= vectorJ << (50-k);
         else
@@ -228,11 +233,6 @@ void GF2::power2k(int k)
 }
 GF2& GF2::power2k(const GF2&, int k)
 {
-    //k %= 179;
-    //std::bitset<179> res =  (std::bitset<179>(this->elementGF[0])<<128) |
-                            (std::bitset<179>(this->elementGF[1])<<64) |
-                            (std::bitset<179>(this->elementGF[2]));
-    //std::bitset<179> res
     u64 carry = 0;
     u64 mask = 0xFFFFFFFFFFFFFFFF;
     u64 res[3] = {0,0,0};
@@ -245,27 +245,119 @@ GF2& GF2::power2k(const GF2&, int k)
     return *new GF2(res);
 }
 
-GF2& GF2::inverseGF()//need tests
+GF2& GF2::inverseGF()
 {
+
     GF2 b(this->elementGF);
     int k = 1;
     uint8_t m = 178;// (1011 0010)2
     for(int i = 6; i >= 0; --i)
     {
        GF2 tmp(b.elementGF);
-       for(int j = 0;j<k;++j)
+       for(int j = 0; j < k; ++j)
            tmp.power2();
        b = tmp * b;
        k *= 2;
-       std::cout<<((m>>i)&1);
+
        if(((m>>i) & 1) == 1)
        {
            b.power2();
+           GF2 tmp = b;
            b = b * *this;
            ++k;
        }
     }
-    std::cout<<"\n";
+
     b.power2();
     return *new GF2(b.elementGF);
+}
+
+GF2& operator ^ (const GF2& left, std::string right)
+{
+    int sizeBinary = 0;
+    bool firstOne = false;
+    int binary[right.size()*4];
+    int k = 0;
+    for(int i = 0; i < right.size(); ++i)
+    {
+        for(int w = 0; w < 4; ++w)
+        {
+            if(((left.hexCharToNumber(right[i]) >> (3-w)) & 1))
+                firstOne = true;
+
+            if(firstOne == true)
+                sizeBinary++;
+
+            binary[i*4 + w] = ((left.hexCharToNumber(right[i])>>(3-w)) & 1);
+        }
+    }
+    int begin = right.size()*4 - sizeBinary;
+    int end = right.size()*4;
+
+    GF2 *C = new GF2(one.elementGF);
+    for(int i = begin; i < end; ++i)
+    {
+        if(binary[i] == 1)
+        {
+            GF2 tmp = *C;
+            *C = tmp * left;
+        }
+        if(i != end-1)
+        {
+            C->power2();
+        }
+    }
+
+    return *C;
+}
+
+bool operator == (const GF2 &left, const GF2 &right)
+{
+    if(&left == &right)
+        return true;
+    for(int i = 0; i < 3; ++i)
+        if(left.elementGF[i] != right.elementGF[i])
+            return false;
+    return true;
+}
+
+int gcd(int a, int b)
+{
+    if(b == 0)
+        return a;
+    return gcd(b,a%b);
+}
+
+bool isPrime(int a)
+{
+    for(int i = 2; i <= sqrt(a); ++i)
+    {
+        if(a % i == 0)
+            return 0;
+    }
+    return 1;
+}
+
+void GF2::ONB(const int& m,int T)
+{
+    if(T > 2 || m%8 == 0)
+    {
+        return;
+    }
+    int p = T*m + 1;
+    if(isPrime(T*m + 1))
+    {
+        int k = 1;
+        int tmp = 2;
+        while(tmp != 1)
+        {
+            tmp = (tmp*2)%p;
+            ++k;
+        }
+        if(gcd((T*m)/k,m) == 1)
+            std::cout<<"m = "<<m<<";\nexist ONB type "<<T<<'\n';
+    }
+    ONB(m,T+1);
+
+
 }
